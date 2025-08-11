@@ -1,7 +1,3 @@
-Here’s a clean, repo-level **README.md** you can drop at the root of `Knowledge_Graphs/`. It treats the repo as a monorepo of self-contained, Docker-ready knowledge graphs (KGs), starting with `graph_theory_kg` and leaving room for many more.
-
----
-
 # Knowledge\_Graphs
 
 A collection of interactive **Knowledge Graphs** you can run locally with Docker. Each graph is a mini app with:
