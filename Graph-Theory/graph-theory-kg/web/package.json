@@ -1,0 +1,12 @@
+{
+  "name": "graph-theory-kg",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

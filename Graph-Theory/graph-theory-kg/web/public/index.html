@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Graph Theory Knowledge Graph + Ollama</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+
+<style>
+  :root { --bg:#0f172a; --panel:#111827; --ink:#e5e7eb; --muted:#94a3b8; --warn:#f59e0b; }
+  html, body { height:100%; margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu; }
+  .wrap { display:grid; grid-template-columns: 1fr 360px; height:100%; }
+  header { grid-column:1 / -1; padding:10px 14px; border-bottom:1px solid #1f2937; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header .title { font-weight:700; letter-spacing:.2px; margin-right:10px; }
+  header input[type="text"] { background:#0b1220; border:1px solid #1f2937; color:var(--ink); padding:8px 10px; border-radius:8px; width:240px; }
+  header select, header button, header label, header details { background:#0b1220; border:1px solid #1f2937; color:var(--ink); padding:8px 10px; border-radius:8px; }
+  header button { cursor:pointer; }
+  header .chip { display:inline-flex; gap:6px; align-items:center; padding:6px 8px; border-radius:999px; border:1px solid #1f2937; }
+  #graph { background: radial-gradient(1200px 500px at 50% -200px, #0b1220, #0a1020 60%, #090e1a); width:100%; height:calc(100vh - 60px); }
+  #panel { background:var(--panel); border-left:1px solid #1f2937; padding:12px; overflow:auto; }
+  #panel h2 { font-size:16px; margin:10px 0 8px; }
+  #answer.md { line-height:1.55; }
+  #answer.md h1,#answer.md h2,#answer.md h3{ margin:.6em 0 .4em; }
+  #answer.md h1{ font-size:1.35rem } #answer.md h2{ font-size:1.2rem } #answer.md h3{ font-size:1.05rem }
+  #answer.md p{ margin:.5em 0; }
+  #answer.md ul,#answer.md ol{ padding-left:1.2em; margin:.4em 0; }
+  #answer.md li{ margin:.2em 0; }
+  #answer.md code{ background:#0b1220; padding:.15em .35em; border:1px solid #1f2937; border-radius:4px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; }
+  #answer.md pre{ background:#0b1220; border:1px solid #1f2937; padding:10px; border-radius:8px; overflow:auto; position:relative; }
+  #answer.md pre code{ border:none; background:transparent; padding:0; display:block; }
+  #answer.md blockquote{ border-left:3px solid #374151; margin:.6em 0; padding:.1em .8em; color:#cbd5e1; }
+  #answer.md table{ width:100%; border-collapse:collapse; margin:.6em 0; }
+  #answer.md th,#answer.md td{ border:1px solid #1f2937; padding:6px 8px; }
+  .copy-btn {
+    position:absolute; top:6px; right:6px; font-size:12px; padding:2px 6px;
+    border:1px solid #334155; background:#0b1220; color:#e5e7eb; border-radius:6px; cursor:pointer;
+  }
+  .small { color:var(--muted); font-size:12px; }
+  .kv { display:grid; grid-template-columns: 92px 1fr; gap:6px; }
+  .legend { display:flex; gap:6px; flex-wrap:wrap; }
+  .legend span { display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #1f2937; border-radius:999px; }
+  .legend b { display:inline-block; width:10px; height:10px; border-radius:2px; }
+  .warn { color:var(--warn); }
+  .ok { color:#34d399; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="title">Graph Theory KG</div>
+    <input id="search" type="text" placeholder="Search node…" />
+    <button id="btnFocus">Focus</button>
+    <select id="selCat">
+      <option value="ALL">All categories</option>
+    </select>
+    <label class="chip"><input type="checkbox" id="chkLabels" /> Edge labels</label>
+    <label class="chip"><input type="checkbox" id="chkDirected" /> Directed paths</label>
+    <button id="btnPath">Shortest Path</button>
+    <button id="btnReset">Reset</button>
+    <details>
+      <summary>Data</summary>
+      <button id="btnDownload" style="margin-top:6px">Download JSON</button>
+      <button id="btnSelfTest" style="margin-top:6px">Self-Test</button>
+      <button id="btnDownloadMD" style="margin-top:6px">Download AI Markdown</button>
+    </details>
+    <span id="status" class="small"></span>
+  </header>
+
+  <div class="wrap">
+    <svg id="graph"></svg>
+    <aside id="panel">
+      <h2>Node</h2>
+      <div id="nodeMeta" class="kv small"></div>
+      <h2>AI (Ollama: llama3.2)</h2>
+      <div id="answer" class="small md">Click a node to fetch an explanation…</div>
+      <div class="small" style="margin-top:8px;">Proxy served by app: <code>/ask</code></div>
+      <h2>Legend</h2>
+      <div id="legend" class="legend"></div>
+    </aside>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/common.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+
+  <script>
+  // --------- Data ---------
+  const graphData = {
+    nodes: [
+      { id:"Graph", cat:"Foundations" },
+      { id:"Vertex", cat:"Foundations" }, { id:"Edge", cat:"Foundations" }, { id:"Degree", cat:"Properties" },
+      { id:"Subgraph", cat:"Foundations" }, { id:"Isomorphism", cat:"Foundations" }, { id:"Connectedness", cat:"Properties" },
+      { id:"Tree", cat:"Graph Types" }, { id:"Forest", cat:"Graph Types" }, { id:"DAG", cat:"Graph Types" },
+      { id:"Bipartite", cat:"Graph Types" }, { id:"Planar", cat:"Graph Types" },
+      { id:"Cycle", cat:"Graph Types" }, { id:"Path", cat:"Foundations" },
+      { id:"Cut", cat:"Properties" }, { id:"Bridge", cat:"Properties" },
+      { id:"Cliques", cat:"Properties" }, { id:"Chromatic Number", cat:"Properties" },
+      { id:"BFS", cat:"Algorithms" }, { id:"DFS", cat:"Algorithms" },
+      { id:"Topological Sort", cat:"Algorithms" }, { id:"Dijkstra", cat:"Algorithms" },
+      { id:"Bellman-Ford", cat:"Algorithms" }, { id:"Kruskal", cat:"Algorithms" },
+      { id:"Prim", cat:"Algorithms" }, { id:"Max-Flow", cat:"Algorithms" }, { id:"Min-Cut", cat:"Algorithms" },
+      { id:"PageRank", cat:"Applications" }, { id:"Network Design", cat:"Applications" }, { id:"Scheduling", cat:"Applications" },
+      { id:"Coloring", cat:"Problems" }, { id:"Vertex Cover", cat:"Problems" }, { id:"Independent Set", cat:"Problems" },
+      { id:"Handshaking Lemma", cat:"Theorems" }, { id:"Kuratowski", cat:"Theorems" }, { id:"Menger", cat:"Theorems" },
+      { id:"Eulerian Path", cat:"Graph Types" }, { id:"Hamiltonian Cycle", cat:"Problems" },
+      { id:"Matchings", cat:"Properties" }, { id:"Hall's Theorem", cat:"Theorems" }
+    ],
+    links: [
+      { s:"Graph", t:"Vertex", label:"has" }, { s:"Graph", t:"Edge", label:"has" },
+      { s:"Degree", t:"Vertex", label:"is degree of", directed:true },
+      { s:"Connectedness", t:"Graph", label:"property of" },
+      { s:"Tree", t:"Graph", label:"acyclic connected" }, { s:"Forest", t:"Tree", label:"disjoint union" },
+      { s:"DAG", t:"Graph", label:"acyclic directed" }, { s:"Topological Sort", t:"DAG", label:"applies to", directed:true },
+      { s:"Bipartite", t:"Graph", label:"2-colorable" }, { s:"Planar", t:"Graph", label:"drawable without crossings" },
+      { s:"Cycle", t:"Graph", label:"closed walk" }, { s:"Path", t:"Graph", label:"walk without repeats" },
+      { s:"Cut", t:"Graph", label:"partition" }, { s:"Bridge", t:"Graph", label:"edge whose removal disconnects" },
+      { s:"Cliques", t:"Graph", label:"complete subgraph" },
+      { s:"Chromatic Number", t:"Coloring", label:"minimum colors", directed:true },
+      { s:"BFS", t:"Graph", label:"traversal" }, { s:"DFS", t:"Graph", label:"traversal" },
+      { s:"Dijkstra", t:"Graph", label:"shortest paths (nonneg wts)" },
+      { s:"Bellman-Ford", t:"Graph", label:"shortest paths (neg ok)" },
+      { s:"Kruskal", t:"Graph", label:"MST" }, { s:"Prim", t:"Graph", label:"MST" },
+      { s:"Max-Flow", t:"Graph", label:"flow problem" }, { s:"Min-Cut", t:"Graph", label:"dual of max-flow", directed:true },
+      { s:"Max-Flow", t:"Min-Cut", label:"= (theorem)", directed:true },
+      { s:"PageRank", t:"Graph", label:"Markov chain on graph" },
+      { s:"Network Design", t:"Graph", label:"application" }, { s:"Scheduling", t:"DAG", label:"precedence constraints", directed:true },
+      { s:"Coloring", t:"Graph", label:"NP-complete" },
+      { s:"Vertex Cover", t:"Graph", label:"NP-complete" },
+      { s:"Independent Set", t:"Graph", label:"NP-complete" },
+      { s:"Handshaking Lemma", t:"Degree", label:"sum of degrees = 2|E|", directed:true },
+      { s:"Kuratowski", t:"Planar", label:"nonplanar iff K5 or K3,3", directed:true },
+      { s:"Menger", t:"Cut", label:"min cut = max disjoint paths", directed:true },
+      { s:"Eulerian Path", t:"Degree", label:"0 or 2 odd vertices", directed:true },
+      { s:"Hamiltonian Cycle", t:"Graph", label:"NP-complete" },
+      { s:"Matchings", t:"Graph", label:"set of disjoint edges" },
+      { s:"Hall's Theorem", t:"Matchings", label:"bipartite matching", directed:true },
+      { s:"Hall's Theorem", t:"Bipartite", label:"applies to", directed:true }
+    ]
+  };
+
+  const nodeById = new Map(graphData.nodes.map(n => [n.id, n]));
+  graphData.links = graphData.links.map(e => ({
+    source: nodeById.get(e.s) || e.s,
+    target: nodeById.get(e.t) || e.t,
+    label: e.label || "",
+    directed: !!e.directed
+  }));
+
+  const cats = Array.from(new Set(graphData.nodes.map(n => n.cat))).sort();
+  const catColors = d3.scaleOrdinal()
+    .domain(cats)
+    .range(d3.schemeTableau10.concat(d3.schemeSet3).slice(0, cats.length));
+  const selCat = document.getElementById("selCat");
+  cats.forEach(c => { const o = document.createElement("option"); o.value=c; o.textContent=c; selCat.appendChild(o); });
+  const legend = document.getElementById("legend");
+  cats.forEach(c => { const span=document.createElement("span"); const sw=document.createElement("b"); sw.style.background=catColors(c); span.appendChild(sw); span.appendChild(document.createTextNode(c)); legend.appendChild(span); });
+
+  const svg = d3.select("#graph");
+  const width = svg.node().clientWidth || 800;
+  const height = svg.node().clientHeight || 600;
+
+  const zoomLayer = svg.append("g");
+  const linkLayer = zoomLayer.append("g").attr("stroke", "#334155").attr("stroke-opacity", 0.6);
+  const labelLayer = zoomLayer.append("g").attr("font-size", 10).attr("fill", "#a3a3a3");
+  const nodeLayer = zoomLayer.append("g");
+
+  const defs = svg.append("defs");
+  defs.append("marker").attr("id","arrow").attr("viewBox","0 -5 10 10")
+    .attr("refX",16).attr("refY",0).attr("markerWidth",6).attr("markerHeight",6).attr("orient","auto")
+    .append("path").attr("d","M0,-5L10,0L0,5").attr("fill","#475569");
+
+  // Simulation INIT BEFORE USE
+  const simulation = d3.forceSimulation(graphData.nodes)
+    .force("link", d3.forceLink(graphData.links).id(d => d.id).distance(70).strength(0.4))
+    .force("charge", d3.forceManyBody().strength(-260))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("collide", d3.forceCollide().radius(30));
+
+  const links = linkLayer.selectAll("line").data(graphData.links).join("line")
+    .attr("stroke-width", 1.5).attr("marker-end", d => d.directed ? "url(#arrow)" : null);
+
+  const edgeLabels = labelLayer.selectAll("text").data(graphData.links).join("text")
+    .attr("class","edge-label").attr("text-anchor","middle").attr("display","none").text(d => d.label);
+
+  const nodes = nodeLayer.selectAll("g.node").data(graphData.nodes).join("g")
+    .attr("class","node").call(drag(simulation));
+
+  nodes.append("circle").attr("r",10).attr("fill", d => catColors(d.cat)).attr("stroke","#1f2937").attr("stroke-width",1.5);
+  nodes.append("text").text(d => d.id).attr("x",12).attr("y","0.31em").attr("fill","#cbd5e1").attr("font-size",11);
+  nodes.append("title").text(d => `${d.id} • ${d.cat}`);
+
+  simulation.on("tick", () => {
+    links.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+         .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    nodes.attr("transform", d => `translate(${d.x},${d.y})`);
+    edgeLabels.attr("x", d => (d.source.x + d.target.x)/2).attr("y", d => (d.source.y + d.target.y)/2 - 4);
+  });
+
+  svg.call(d3.zoom().scaleExtent([0.2, 4]).on("zoom", (event) => zoomLayer.attr("transform", event.transform)));
+
+  const status = document.getElementById("status");
+  const chkLabels = document.getElementById("chkLabels");
+  const chkDirected = document.getElementById("chkDirected");
+  const search = document.getElementById("search");
+  const btnFocus = document.getElementById("btnFocus");
+  const btnReset = document.getElementById("btnReset");
+  const btnPath = document.getElementById("btnPath");
+  const btnDownload = document.getElementById("btnDownload");
+  const btnSelfTest = document.getElementById("btnSelfTest");
+  const btnDownloadMD = document.getElementById("btnDownloadMD");
+
+  chkLabels.addEventListener("change", () => edgeLabels.attr("display", chkLabels.checked ? null : "none"));
+
+  btnReset.addEventListener("click", () => { clearStyling(); simulation.alpha(0.7).restart(); status.textContent = ""; });
+
+  selCat.addEventListener("change", () => {
+    const v = selCat.value;
+    nodes.attr("display", d => (v === "ALL" || d.cat === v) ? null : "none");
+    const visible = new Set();
+    nodes.each(function(d){ if (this.getAttribute("display") !== "none") visible.add(d); });
+    links.attr("display", d => (visible.has(d.source) && visible.has(d.target)) ? null : "none");
+    edgeLabels.attr("display", d => (chkLabels.checked && visible.has(d.source) && visible.has(d.target)) ? null : "none");
+  });
+
+  btnFocus.addEventListener("click", () => {
+    const q = search.value.trim();
+    if (!q) return;
+    const n = nodeById.get(q);
+    if (!n) { flash(`No node named "${q}"`); return; }
+    focusNode(n);
+  });
+
+  btnPath.addEventListener("click", () => {
+    const raw = search.value.trim();
+    if (!raw.includes("->") && !raw.includes(",")) { flash('Enter "A -> B" or "A,B" in the search box for path.'); return; }
+    const [a, b] = raw.includes("->") ? raw.split("->").map(s => s.trim()) : raw.split(",").map(s => s.trim());
+    const src = nodeById.get(a), dst = nodeById.get(b);
+    if (!src || !dst) { flash("Unknown node(s)"); return; }
+    const path = shortestPath(src.id, dst.id, chkDirected.checked);
+    if (!path) { flash("No path found"); return; }
+    showPath(path);
+  });
+
+  btnDownload.addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(serializeGraph(), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "graph-theory.json"; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  btnSelfTest.addEventListener("click", () => {
+    const report = selfTest();
+    flash(report.ok ? "Self-Test OK" : "Self-Test failed — check panel", report.ok ? "ok" : "warn");
+    renderMeta({ id:"Self-Test", cat:"Diagnostic", info: report.text });
+    renderMarkdownToAnswer([
+      "### Markdown + Code + Math demo",
+      "",
+      "```python",
+      "def bfs(G, s):",
+      "    from collections import deque",
+      "    q, seen = deque([s]), {s}",
+      "    while q:",
+      "        v = q.popleft()",
+      "        for w in G[v]:",
+      "            if w not in seen:",
+      "                seen.add(w); q.append(w)",
+      "    return seen",
+      "```",
+      "",
+      "Euler’s formula: $V - E + F = 2$ ",
+      "",
+      "$$\\chi(G) \\ge \\frac{|V|}{\\alpha(G)}$$"
+    ].join("\n"));
+  });
+
+  btnDownloadMD.addEventListener("click", () => {
+    const md = lastMd || "(no AI response yet)";
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "ai-explanation.md"; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  nodes.on("click", async (event, d) => {
+    clearStyling();
+    highlightNeighborhood(d, 1);
+    focusNode(d);
+    await askOllama(d);
+  });
+
+  function drag(sim) {
+    return d3.drag()
+      .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on("end",  (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; });
+  }
+
+  function clearStyling() {
+    links.attr("stroke", "#334155").attr("stroke-width", 1.5).attr("opacity", 0.9);
+    nodes.selectAll("circle").attr("stroke", "#1f2937").attr("stroke-width", 1.5).attr("opacity", 1);
+    nodes.selectAll("text").attr("font-weight", null);
+  }
+
+  function highlightNeighborhood(node, depth=1) {
+    const nbrs = new Set([node.id]);
+    for (let k=0;k<depth;k++) {
+      graphData.links.forEach(e => {
+        if (nbrs.has(e.source.id)) nbrs.add(e.target.id);
+        if (nbrs.has(e.target.id)) nbrs.add(e.source.id);
+      });
+    }
+    nodes.selectAll("circle").attr("opacity", d => nbrs.has(d.id) ? 1 : 0.2);
+    nodes.selectAll("text").attr("font-weight", d => nbrs.has(d.id) ? 700 : null).attr("opacity", d => nbrs.has(d.id) ? 1 : 0.2);
+    links.attr("opacity", d => (nbrs.has(d.source.id) && nbrs.has(d.target.id)) ? 1 : 0.1)
+         .attr("stroke-width", d => (d.source.id===node.id || d.target.id===node.id) ? 2.4 : 1.5);
+  }
+
+  function focusNode(n) {
+    renderMeta(n);
+    const t = d3.zoomTransform(svg.node());
+    const point = [n.x, n.y];
+    const target = d3.zoomIdentity.translate(width/2, height/2).scale(t.k).translate(-point[0], -point[1]);
+    svg.transition().duration(450).call(d3.zoom().transform, target);
+  }
+
+  function showPath(pathIds) {
+    clearStyling();
+    const onPath = new Set(pathIds);
+    links.attr("opacity", d => (onPath.has(d.source.id) && onPath.has(d.target.id)) ? 1 : 0.1)
+         .attr("stroke", d => (onPath.has(d.source.id) && onPath.has(d.target.id)) ? "#f59e0b" : "#334155")
+         .attr("stroke-width", d => (onPath.has(d.source.id) && onPath.has(d.target.id)) ? 3 : 1.5);
+    nodes.selectAll("circle").attr("opacity", d => onPath.has(d.id) ? 1 : 0.15)
+         .attr("stroke", d => onPath.has(d.id) ? "#f59e0b" : "#1f2937").attr("stroke-width", 2);
+    nodes.selectAll("text").attr("font-weight", d => onPath.has(d.id) ? 700 : null);
+    const last = nodeById.get(pathIds[pathIds.length-1]); if (last) focusNode(last);
+    flash(`Path: ${pathIds.join(" → ")}`);
+  }
+
+  function shortestPath(aId, bId, directed=false) {
+    const adj = new Map();
+    graphData.nodes.forEach(n => adj.set(n.id, []));
+    graphData.links.forEach(e => {
+      adj.get(e.source.id).push(e.target.id);
+      if (!directed || !e.directed) adj.get(e.target.id).push(e.source.id);
+      else if (directed && !e.directed) adj.get(e.target.id).push(e.source.id);
+    });
+    const q = [aId], prev = new Map([[aId, null]]), seen = new Set([aId]);
+    while (q.length) {
+      const v = q.shift();
+      if (v === bId) break;
+      for (const w of adj.get(v)) {
+        if (!seen.has(w)) { seen.add(w); prev.set(w, v); q.push(w); }
+      }
+    }
+    if (!prev.has(bId)) return null;
+    const path = []; for (let cur=bId; cur!==null; cur=prev.get(cur)) path.push(cur); path.reverse(); return path;
+  }
+
+  function renderMeta(n) {
+    const meta = document.getElementById("nodeMeta"); meta.innerHTML = "";
+    [["Label", n.id],["Category", n.cat]].forEach(([k,v]) => {
+      const a=document.createElement("div"); a.textContent=k;
+      const b=document.createElement("div"); b.textContent=v;
+      meta.appendChild(a); meta.appendChild(b);
+    });
+  }
+
+  // --- Markdown pipeline + copy buttons + KaTeX ---
+  let lastMd = "";
+
+  function renderMarkdownToAnswer(md) {
+    lastMd = md;
+    const box = document.getElementById("answer");
+    try {
+      const rawHtml = marked.parse(md, { gfm:true, breaks:true, headerIds:false, mangle:false });
+      const safeHtml = DOMPurify.sanitize(rawHtml);
+      box.innerHTML = safeHtml;
+
+      // Syntax highlighting
+      if (window.hljs) {
+        box.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+      }
+      // KaTeX auto-render
+      if (window.renderMathInElement) {
+        renderMathInElement(box, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$",  right: "$",  display: false },
+            { left: "\\(", right: "\\)", display: false },
+            { left: "\\[", right: "\\]", display: true }
+          ],
+          throwOnError: false
+        });
+      }
+      // Copy buttons
+      attachCopyButtons(box);
+    } catch (e) {
+      box.innerHTML = `<span class="warn">Markdown render error:</span> ${e.message}`;
+    }
+  }
+
+  function attachCopyButtons(scopeEl) {
+    scopeEl.querySelectorAll("pre").forEach((pre) => {
+      // Avoid duplicates
+      if (pre.querySelector(".copy-btn")) return;
+      const btn = document.createElement("button");
+      btn.className = "copy-btn";
+      btn.textContent = "Copy";
+      btn.addEventListener("click", async () => {
+        const code = pre.querySelector("code");
+        const text = code ? code.innerText : pre.innerText;
+        try {
+          await navigator.clipboard.writeText(text);
+          const old = btn.textContent; btn.textContent = "Copied!";
+          setTimeout(() => (btn.textContent = old), 1200);
+        } catch {
+          btn.textContent = "Failed";
+          setTimeout(() => (btn.textContent = "Copy"), 1200);
+        }
+      });
+      pre.appendChild(btn);
+    });
+  }
+
+  async function askOllama(n) {
+    const box = document.getElementById("answer");
+    box.innerHTML = "Querying Ollama…";
+    const prompt = `You are a graph theory tutor. Explain the concept "${n.id}" in depth: definition, key properties, relationships to adjacent concepts in a knowledge graph (like ${neighborsOf(n.id).slice(0,6).join(", ")}), common pitfalls, 1-2 worked examples, and when to use it. Use Markdown with code blocks and LaTeX where helpful.`;
+    try {
+      const resp = await fetch("/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, temperature: 0.2, max_tokens: 900 })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Proxy error");
+      renderMarkdownToAnswer(data.response || "(empty)");
+    } catch (e) {
+      box.innerHTML = `<span class="warn">Couldn’t reach Ollama proxy:</span> ${e.message}`;
+    }
+  }
+
+  function neighborsOf(id) {
+    const out = new Set();
+    graphData.links.forEach(e => { if (e.source.id===id) out.add(e.target.id); if (e.target.id===id) out.add(e.source.id); });
+    return Array.from(out);
+  }
+
+  function flash(msg, cls) { status.textContent = msg; status.className = "small " + (cls || ""); setTimeout(() => { status.textContent = ""; }, 4000); }
+
+  function serializeGraph() {
+    return {
+      nodes: graphData.nodes.map(({id, cat}) => ({id, cat})),
+      links: graphData.links.map(e => ({ s:e.source.id, t:e.target.id, label:e.label, directed:e.directed }))
+    };
+  }
+
+  function selfTest() {
+    const issues = [];
+    if (!simulation) issues.push("simulation not created");
+    const p1 = shortestPath("Graph", "Dijkstra", false);
+    if (!p1 || p1.length < 2) issues.push("shortestPath(Graph,Dijkstra) failed");
+    const p2 = shortestPath("Topological Sort", "Graph", true);
+    if (!p2) issues.push("directed shortestPath failed (Topological Sort → Graph)");
+    const nbs = neighborsOf("Graph"); if (!nbs.length) issues.push("neighborsOf(Graph) empty");
+    if (!cats.includes("Graph Types")) issues.push("category missing: Graph Types");
+    if (!window.marked || !window.DOMPurify) issues.push("markdown libs missing");
+    if (!window.hljs) issues.push("highlight.js missing");
+    if (!window.katex || !window.renderMathInElement) issues.push("KaTeX libs missing");
+    // Copy buttons smoke test (create a fake pre/code)
+    try {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = "<pre><code>print(42)</code></pre>";
+      attachCopyButtons(tmp);
+      if (!tmp.querySelector(".copy-btn")) issues.push("copy buttons missing");
+    } catch(e) { issues.push("copy button error: " + e.message); }
+    return { ok: issues.length === 0, text: issues.length ? "Issues:\n- " + issues.join("\n- ") : "All tests passed." };
+  }
+  </script>
+</body>
+</html>
