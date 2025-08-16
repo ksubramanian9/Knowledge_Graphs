@@ -16,6 +16,7 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 const OLLAMA_BASE_URL =
   process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
+const KG_NAME = process.env.KG_NAME || "FinOps KG";
 
 // --- Graph storage ---
 const graphsDir = path.join(__dirname, "graphs");
@@ -97,6 +98,6 @@ app.use(express.static(pub));
 app.get("*", (_, res) => res.sendFile(path.join(pub, "index.html")));
 
 app.listen(PORT, () => {
-  console.log(`Graph Theory KG on http://localhost:${PORT}`);
+  console.log(`${KG_NAME} on http://localhost:${PORT}`);
   console.log(`Proxy -> ${OLLAMA_BASE_URL}/api/generate`);
 });
