@@ -6,6 +6,7 @@ RUN npm i --omit=dev
 
 COPY server.mjs ./server.mjs
 COPY public ./public
+COPY graphs ./graphs
 
 ENV PORT=3000
 EXPOSE 3000
