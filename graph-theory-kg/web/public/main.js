@@ -13,7 +13,8 @@
     const files = Array.from(e.target.files || []);
     const graphs = await Promise.all(files.map(async f => ({ name:f.name, data: JSON.parse(await f.text()) })));
     if (graphs.length) {
-      await fetch("/graphs", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ graphs }) });
+      const resp = await fetch("/graphs", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ graphs }) });
+      if (!resp.ok) { flash("Upload failed"); return; }
       location.search = `?graph=${graphs[0].name}`;
     }
   });
