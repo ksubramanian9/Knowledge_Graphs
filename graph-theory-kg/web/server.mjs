@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
+import { promises as fsp } from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,6 +16,12 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 const OLLAMA_BASE_URL =
   process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
+
+// --- Graph storage ---
+const graphsDir = path.join(__dirname, "graphs");
+if (!fs.existsSync(graphsDir)) {
+  fs.mkdirSync(graphsDir, { recursive: true });
+}
 
 // --- Proxy endpoint ---
 app.post("/ask", async (req, res) => {
@@ -39,6 +47,43 @@ app.post("/ask", async (req, res) => {
     }
     const data = await r.json(); // { response: "...", ... }
     res.json({ response: data.response || "" });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// --- Graph management ---
+app.get("/graphs", async (_, res) => {
+  try {
+    const files = await fsp.readdir(graphsDir);
+    res.json(files.filter((f) => f.endsWith(".json")));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.get("/graphs/:name", async (req, res) => {
+  const file = path.join(graphsDir, path.basename(req.params.name));
+  try {
+    const data = await fsp.readFile(file, "utf8");
+    res.type("application/json").send(data);
+  } catch (err) {
+    res.status(404).json({ error: "Not found" });
+  }
+});
+
+app.post("/graphs", async (req, res) => {
+  const { graphs } = req.body || {};
+  if (!Array.isArray(graphs) || !graphs.length) {
+    return res.status(400).json({ error: "No graphs provided" });
+  }
+  try {
+    for (const g of graphs) {
+      if (!g || !g.name || !g.data) continue;
+      const file = path.join(graphsDir, path.basename(g.name));
+      await fsp.writeFile(file, JSON.stringify(g.data, null, 2));
+    }
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

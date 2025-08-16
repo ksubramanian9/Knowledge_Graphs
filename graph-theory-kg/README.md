@@ -1,9 +1,10 @@
 # Graph Theory Knowledge Graph (with local Ollama)
 
-Interactive Graph Theory knowledge graph with:
+Interactive Knowledge Graph app with:
 - Pan/zoom/drag (D3)
 - Neighbor highlighting & shortest path (directed/undirected)
 - Category filter & edge labels
+- Upload or select a graph JSON from `/graphs`
 - Node click → query **local** Ollama (`llama3.2`) and render **Markdown** with
   - Code highlighting (highlight.js)
   - LaTeX math (KaTeX)
