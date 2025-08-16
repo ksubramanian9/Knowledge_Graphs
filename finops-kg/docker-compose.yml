@@ -1,0 +1,13 @@
+services:
+  app:
+    build: ./web
+    ports:
+      - "3000:3000"
+    environment:
+      # Uses your host's local Ollama; change if needed
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      PORT: "3000"
+    extra_hosts:
+      # Ensures the container can reach your host on Linux too
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
